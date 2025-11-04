@@ -1,0 +1,64 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: chat4all
+      MYSQL_USER: chatuser
+      MYSQL_PASSWORD: chatpass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  api:
+    build: ./api
+    depends_on:
+      - kafka
+      - mysql
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=chatuser
+      - MYSQL_PASSWORD=chatpass
+      - MYSQL_DB=chat4all
+    ports:
+      - "8000:8000"
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: ./worker
+    depends_on:
+      - kafka
+      - mysql
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=chatuser
+      - MYSQL_PASSWORD=chatpass
+      - MYSQL_DB=chat4all
+
+volumes:
+  mysql_data:
