@@ -5,3 +5,4 @@ confluent-kafka
 sqlalchemy
 confluent_kafka
 pydantic
+cryptography
