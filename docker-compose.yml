@@ -25,38 +25,40 @@ services:
       timeout: 10s
       retries: 10
 
-  mysql:
-    image: mysql:8.0
+  postgres:
+    image: postgres:16
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: chat4all
-      MYSQL_USER: chatuser
-      MYSQL_PASSWORD: chatpass
+      POSTGRES_USER: chatuser
+      POSTGRES_PASSWORD: chatpass
+      POSTGRES_DB: chat4all
+    ports:
+      - "5432:5432"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U chatuser -d chat4all"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
-    ports:
-      - "3307:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
 
   api:
     build: ./api
     depends_on:
       kafka:
         condition: service_healthy
-      mysql:
+      postgres:
         condition: service_healthy
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - MYSQL_HOST=mysql
-      - MYSQL_USER=chatuser
-      - MYSQL_PASSWORD=chatpass
-      - MYSQL_DB=chat4all
+      # recomendo usar URL única:
+      - DB_URL=postgresql+psycopg2://chatuser:chatpass@postgres:5432/chat4all
+      # se preferir variáveis separadas (seu código monta a URL), use:
+      # - POSTGRES_HOST=postgres
+      # - POSTGRES_USER=chatuser
+      # - POSTGRES_PASSWORD=chatpass
+      # - POSTGRES_DB=chat4all
     ports:
       - "8000:8000"
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -66,14 +68,12 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      mysql:
+      postgres:
         condition: service_healthy
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - MYSQL_HOST=mysql
-      - MYSQL_USER=chatuser
-      - MYSQL_PASSWORD=chatpass
-      - MYSQL_DB=chat4all
+      - DB_URL=postgresql+asyncpg://chatuser:chatpass@postgres:5432/chat4all
+      # ou as POSTGRES_* se seu worker montar a URL
 
 volumes:
-  mysql_data:
+  postgres_data:

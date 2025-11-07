@@ -35,9 +35,9 @@ def wait_for_service(host: str, port: int, name: str, timeout: int = 60):
 # ============================================================
 @app.on_event("startup")
 def startup_event():
-    # Espera o MySQL subir
-    wait_for_service("mysql", 3306, "MySQL")
-    
+    # Espera o Postgres subir
+    wait_for_service("postgres", 5432, "PostgreSQL")
+
     # Espera o Kafka subir
     wait_for_service("kafka", 9092, "Kafka")
 
@@ -45,13 +45,13 @@ def startup_event():
     for attempt in range(10):
         try:
             Base.metadata.create_all(bind=engine)
-            print("✅ Tabelas criadas (ou já existentes).")
+            print("✅ Tabelas criadas (ou já existentes) no PostgreSQL.")
             break
         except OperationalError as e:
-            print(f"⚠️ Tentativa {attempt+1}: Falha ao conectar no MySQL ({e})")
+            print(f"⚠️ Tentativa {attempt+1}: Falha ao conectar no PostgreSQL ({e})")
             time.sleep(3)
     else:
-        raise RuntimeError("⛔ Não foi possível conectar ao MySQL após várias tentativas.")
+        raise RuntimeError("⛔ Não foi possível conectar ao PostgreSQL após várias tentativas.")
 
 
 # ============================================================
@@ -80,7 +80,7 @@ def post_message(msg: MessageRequest):
         "conversation_id": msg.conversation_id,
         "from_user": msg.from_user,
         "to": msg.to,
-        "payload": msg.payload.dict()
+        "payload": msg.payload.dict()  # se estiver em Pydantic v2, pode usar .model_dump()
     }
 
     try:
@@ -97,8 +97,23 @@ def get_messages(conv_id: str):
     """Busca todas as mensagens de uma conversa no banco."""
     db = SessionLocal()
     try:
-        msgs = db.query(Message).filter(Message.conversation_id == conv_id).all()
-        return [m.__dict__ for m in msgs]
+        rows = db.query(Message).filter(Message.conversation_id == conv_id).all()
+
+        # Serialização explícita para evitar _sa_instance_state
+        def to_dict(m: Message):
+            return {
+                "message_id": m.message_id,
+                "conversation_id": m.conversation_id,
+                "sender": m.sender,
+                "receiver": m.receiver,
+                "payload": m.payload,
+                "status": m.status,
+                # Se seu modelo tiver timestamps:
+                # "created_at": m.created_at.isoformat() if getattr(m, "created_at", None) else None,
+                # "updated_at": m.updated_at.isoformat() if getattr(m, "updated_at", None) else None,
+            }
+
+        return [to_dict(m) for m in rows]
     except Exception as e:
         print(f"❌ Erro ao buscar mensagens: {e}")
         raise HTTPException(status_code=500, detail="Erro ao buscar mensagens")

@@ -1,7 +1,7 @@
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.9
+confluent-kafka==2.6.0
 fastapi
 uvicorn
-pymysql
-sqlalchemy
-confluent-kafka
 pydantic
-cryptography
+python-dotenv
