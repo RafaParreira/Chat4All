@@ -29,6 +29,7 @@ def send_message(topic: str, message: dict):
     """
     try:
         payload = json.dumps(message).encode("utf-8")
+        key = str(message["conversation_id"]).encode("utf-8")
         producer.produce(topic, value=payload, callback=delivery_report)
         producer.poll(0)  # aciona callbacks de entrega
         producer.flush()  # força envio imediato (para uso síncrono, como no seu projeto)

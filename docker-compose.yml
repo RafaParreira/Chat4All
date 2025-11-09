@@ -51,14 +51,11 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      # recomendo usar URL única:
       - DB_URL=postgresql+psycopg2://chatuser:chatpass@postgres:5432/chat4all
-      # se preferir variáveis separadas (seu código monta a URL), use:
-      # - POSTGRES_HOST=postgres
-      # - POSTGRES_USER=chatuser
-      # - POSTGRES_PASSWORD=chatpass
-      # - POSTGRES_DB=chat4all
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - JWT_SECRET=devsecret
+      - JWT_ALG=HS256
+      - JWT_EXPIRES_MIN=1440
     ports:
       - "8000:8000"
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
