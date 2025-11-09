@@ -2,12 +2,13 @@ import time
 import uuid
 import json
 import socket
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 from kafka_producer import send_message
 from db import Base, engine, SessionLocal
 from models import Message
+from auth import create_token, get_current_user
 
 app = FastAPI(title="Chat4All API", version="v1")
 
@@ -68,6 +69,10 @@ class MessageRequest(BaseModel):
     to: list[str]
     payload: MessagePayload
 
+# rota para gerar token de teste
+class TokenReq(BaseModel):
+    user_id: str
+
 
 # ============================================================
 # Rotas
@@ -90,6 +95,10 @@ def post_message(msg: MessageRequest):
     except Exception as e:
         print(f"❌ Erro ao enviar mensagem para Kafka: {e}")
         raise HTTPException(status_code=500, detail="Erro ao enviar mensagem para o Kafka")
+
+@app.post("/auth/token")
+def issue_token(body: TokenReq):
+    return {"access_token": create_token(body.user_id), "token_type": "bearer"}
 
 
 @app.get("/v1/conversations/{conv_id}/messages")

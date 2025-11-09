@@ -5,3 +5,4 @@ fastapi
 uvicorn
 pydantic
 python-dotenv
+python-jose[cryptography]==3.3.0
