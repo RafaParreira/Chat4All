@@ -69,7 +69,7 @@ services:
         condition: service_healthy
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - DB_URL=postgresql+asyncpg://chatuser:chatpass@postgres:5432/chat4all
+      - DB_URL=postgresql+psycopg2://chatuser:chatpass@postgres:5432/chat4all
       # ou as POSTGRES_* se seu worker montar a URL
 
 volumes:
