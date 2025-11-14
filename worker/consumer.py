@@ -1,104 +1,93 @@
-import os
 import json
-import signal
-import sys
-from time import sleep
-from confluent_kafka import Consumer
-from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert
+import time
 
+from confluent_kafka import Consumer, KafkaError
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
+
+from config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_CHAT_TOPIC, KAFKA_GROUP_ID
 from db import SessionLocal, engine, Base
 from models import Message
 
-# Garante que a tabela exista
-Base.metadata.create_all(bind=engine)
 
-# Config do Kafka por env (fallbacks para seu compose)
-conf = {
-    "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
-    "group.id": os.getenv("KAFKA_GROUP_ID", "chat4all-worker"),
-    "auto.offset.reset": os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest"),
-    # opcional: 'enable.auto.commit': False  # manteremos commit manual explícito
-}
-consumer = Consumer(conf)
-consumer.subscribe([os.getenv("KAFKA_TOPIC", "messages")])
-
-running = True
-def handle_sigterm(sig, frame):
-    global running
-    running = False
-signal.signal(signal.SIGINT, handle_sigterm)
-signal.signal(signal.SIGTERM, handle_sigterm)
-
-print("📡 Worker iniciado. Aguardando mensagens...")
-
-try:
-    while running:
-        msg = consumer.poll(1.0)
-        if msg is None:
-            continue
-        if msg.error():
-            print("⚠️ Erro no Kafka:", msg.error())
-            continue
-
+def wait_for_db(max_retries: int = 30, delay: int = 2):
+    """Tenta conectar no Postgres e criar as tabelas com retry."""
+    attempt = 1
+    while True:
         try:
-            data = json.loads(msg.value().decode("utf-8"))
-        except Exception as e:
-            print("⚠️ Erro ao decodificar JSON:", e)
-            # commit mesmo assim para não ficar travado em mensagem inválida
-            consumer.commit(asynchronous=False)
-            continue
+            print(f"[worker] Tentando conectar ao Postgres (tentativa {attempt})...")
+            Base.metadata.create_all(bind=engine)
+            print("[worker] Conectado ao Postgres e tabelas OK.")
+            break
+        except OperationalError as e:
+            if attempt >= max_retries:
+                print("[worker] Erro ao conectar ao Postgres, número máximo de tentativas atingido.")
+                raise e
+            print(f"[worker] Postgres ainda não está pronto, tentando de novo em {delay}s...")
+            attempt += 1
+            time.sleep(delay)
 
-        # Monta campos (preservando seu contrato atual)
-        record = {
-            "message_id":      data["message_id"],
-            "conversation_id": data["conversation_id"],
-            "sender":          data.get("from_user", ""),
-            "receiver":        json.dumps(data.get("to", "")),
-            "payload":         json.dumps(data.get("payload", {})),
-            "status":          "SENT",
-        }
 
-        # Upsert idempotente
-        try:
-            with SessionLocal() as db:  # type: Session
-                stmt = (
-                    insert(Message)
-                    .values(**record)
-                    .on_conflict_do_update(
-                        index_elements=[Message.message_id],
-                        set_={
-                            "conversation_id": record["conversation_id"],
-                            "sender": record["sender"],
-                            "receiver": record["receiver"],
-                            "payload": record["payload"],
-                            "status": record["status"],
-                        },
-                    )
-                )
-                db.execute(stmt)
-                db.commit()
+def create_consumer():
+    conf = {
+        "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
+        "group.id": KAFKA_GROUP_ID,
+        "auto.offset.reset": "earliest",
+    }
+    consumer = Consumer(conf)
+    consumer.subscribe([KAFKA_CHAT_TOPIC])
+    return consumer
 
-                # --- (Opcional) simular entrega e marcar DELIVERED ---
-                # sleep(0.2)
-                # db.query(Message).filter(
-                #     Message.message_id == record["message_id"]
-                # ).update({"status": "DELIVERED"})
-                # db.commit()
-                # -----------------------------------------------------
 
-            print(f"💾 Mensagem {record['message_id']} salva/atualizada no PostgreSQL.")
-            consumer.commit(asynchronous=False)
+def run_worker():
+    consumer = create_consumer()
+    print("[worker] Iniciado. Aguardando mensagens...")
 
-        except Exception as e:
-            print("❌ Erro ao salvar no PostgreSQL:", e)
-            # Não faz commit do offset para tentar reprocessar
-            # (em produção, considere DLQ / retries exponenciais)
-except Exception as e:
-    print("❌ Erro inesperado no loop do worker:", e)
-finally:
     try:
+        while True:
+            msg = consumer.poll(1.0)
+            if msg is None:
+                continue
+
+            if msg.error():
+                if msg.error().code() == KafkaError._PARTITION_EOF:
+                    continue
+                else:
+                    print(f"[worker] Erro no Kafka: {msg.error()}")
+                    continue
+
+            try:
+                data = json.loads(msg.value().decode("utf-8"))
+                room_id = data["room_id"]
+                sender_id = data["sender_id"]
+                content = data["content"]
+
+                db: Session = SessionLocal()
+                try:
+                    message = Message(
+                        room_id=room_id,
+                        sender_id=sender_id,
+                        content=content,
+                    )
+                    db.add(message)
+                    db.commit()
+                    print(
+                        f"[worker] Mensagem salva: room={room_id}, sender={sender_id}, content={content}"
+                    )
+                finally:
+                    db.close()
+
+            except Exception as e:
+                print(f"[worker] Erro ao processar mensagem: {e}")
+
+    except KeyboardInterrupt:
+        print("[worker] Encerrando...")
+    finally:
         consumer.close()
-    except Exception:
-        pass
-    print("👋 Worker finalizado.")
+
+
+if __name__ == "__main__":
+    # espera inicial opcional geral
+    time.sleep(3)
+    wait_for_db()
+    run_worker()
