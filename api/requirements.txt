@@ -1,8 +1,7 @@
-SQLAlchemy==2.0.36
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+SQLAlchemy==2.0.35
 psycopg2-binary==2.9.9
-confluent-kafka==2.6.0
-fastapi
-uvicorn
-pydantic
-python-dotenv
-python-jose[cryptography]==3.3.0
+pydantic==2.9.0
+confluent-kafka==2.5.0
+python-dotenv==1.0.1

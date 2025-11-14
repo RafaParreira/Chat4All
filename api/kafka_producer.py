@@ -1,38 +1,30 @@
-import os
-import json
 from confluent_kafka import Producer
+from config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_CHAT_TOPIC
+import json
+from typing import Dict
 
-# Lê do ambiente ou usa padrão (compatível com seu docker-compose)
-BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-
-conf = {
-    "bootstrap.servers": BOOTSTRAP_SERVERS,
-    "linger.ms": 10,          # pequeno buffer para agrupar mensagens
-    "acks": "1",              # confirmação do líder suficiente
+producer_conf = {
+    "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
 }
 
-producer = Producer(conf)
+producer = Producer(producer_conf)
 
 
 def delivery_report(err, msg):
-    """Callback chamado quando a mensagem é entregue ou falha."""
     if err is not None:
-        print(f"❌ Erro ao entregar mensagem: {err}")
+        # aqui você pode logar de forma mais robusta depois
+        print(f"Mensagem não entregue: {err}")
     else:
-        print(f"✅ Mensagem entregue ao tópico '{msg.topic()}' [partição {msg.partition()}] offset {msg.offset()}")
+        print(
+            f"Mensagem entregue em {msg.topic()} [partição {msg.partition()}], offset {msg.offset()}"
+        )
 
 
-def send_message(topic: str, message: dict):
-    """
-    Envia mensagem JSON para o Kafka no tópico especificado.
-    Bloqueia até a entrega (producer.flush()).
-    """
-    try:
-        payload = json.dumps(message).encode("utf-8")
-        key = str(message["conversation_id"]).encode("utf-8")
-        producer.produce(topic, value=payload, callback=delivery_report)
-        producer.poll(0)  # aciona callbacks de entrega
-        producer.flush()  # força envio imediato (para uso síncrono, como no seu projeto)
-    except Exception as e:
-        print(f"⚠️ Falha ao enviar mensagem para o Kafka: {e}")
-        raise
+def send_message_to_kafka(payload: Dict):
+    data = json.dumps(payload).encode("utf-8")
+    producer.produce(
+        topic=KAFKA_CHAT_TOPIC,
+        value=data,
+        callback=delivery_report,
+    )
+    producer.poll(0)  # força envio assíncrono

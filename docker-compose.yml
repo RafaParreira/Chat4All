@@ -1,14 +1,14 @@
+version: "3.9"
+
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.1
+    image: confluentinc/cp-zookeeper:7.5.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
 
   kafka:
-    image: confluentinc/cp-kafka:7.6.1
+    image: confluentinc/cp-kafka:7.5.0
     depends_on:
       - zookeeper
     ports:
@@ -16,61 +16,52 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_LISTENERS: PLAINTEXT://:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    healthcheck:
-      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
 
   postgres:
-    image: postgres:16
-    restart: always
+    image: postgres:15
     environment:
-      POSTGRES_USER: chatuser
-      POSTGRES_PASSWORD: chatpass
       POSTGRES_DB: chat4all
+      POSTGRES_USER: chat4all
+      POSTGRES_PASSWORD: chat4all
     ports:
       - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chatuser -d chat4all"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
 
   api:
     build: ./api
     depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - postgres
+      - kafka
     environment:
-      - DB_URL=postgresql+psycopg2://chatuser:chatpass@postgres:5432/chat4all
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - JWT_SECRET=devsecret
-      - JWT_ALG=HS256
-      - JWT_EXPIRES_MIN=1440
+      POSTGRES_DB: chat4all
+      POSTGRES_USER: chat4all
+      POSTGRES_PASSWORD: chat4all
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_CHAT_TOPIC: chat-messages
     ports:
       - "8000:8000"
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   worker:
     build: ./worker
     depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
+      - postgres
+      - kafka
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - DB_URL=postgresql+psycopg2://chatuser:chatpass@postgres:5432/chat4all
-      # ou as POSTGRES_* se seu worker montar a URL
+      POSTGRES_DB: chat4all
+      POSTGRES_USER: chat4all
+      POSTGRES_PASSWORD: chat4all
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_CHAT_TOPIC: chat-messages
+    # opcional: reiniciar sempre que cair
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
+  pgdata:
