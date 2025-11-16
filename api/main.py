@@ -1,5 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
+from datetime import datetime
+from typing import List
+
 
 from db import Base, engine, get_db
 from models import User, Room, Message
@@ -13,10 +18,18 @@ from schemas import (
 )
 from kafka_producer import send_message_to_kafka
 
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Chat4All API")
 
+
+# ---- ARMAZENAMENTO EM MEMÓRIA PARA TESTE ----
+in_memory_messages: list[dict] = []
+in_memory_next_id = 1
+
+
+# ---- STATIC FRONTEND ----
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ---------- USERS ----------
 @app.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -35,6 +48,10 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/users/{user_id}", response_model=UserOut)
+def root():
+    # redireciona para a página HTML
+    return RedirectResponse(url="/static/index.html")
+
 def get_user(user_id: int, db: Session = Depends(get_db)):
     user = db.get(User, user_id)
     if not user:
@@ -43,28 +60,59 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 
 # ---------- ROOMS ----------
-@app.post("/rooms", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
-def create_room(payload: RoomCreate, db: Session = Depends(get_db)):
-    existing = db.query(Room).filter(Room.name == payload.name).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Sala já existe.",
-        )
-    room = Room(name=payload.name)
-    db.add(room)
-    db.commit()
-    db.refresh(room)
-    return room
+# @app.post("/rooms", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
+# def create_room(payload: RoomCreate, db: Session = Depends(get_db)):
+#     existing = db.query(Room).filter(Room.name == payload.name).first()
+#     if existing:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Sala já existe.",
+#         )
+#     room = Room(name=payload.name)
+#     db.add(room)
+#     db.commit()
+#     db.refresh(room)
+#     return room
+
+# ---------- linha de código para teste em API depois que o BD estiver implementado voltar ao app.post e app.get comentados ----------
+@app.post(
+    "/test/messages",
+    response_model=MessageOut,
+    summary="[TESTE] Enviar mensagem (memória, sem Kafka/DB)",
+)
+def send_message_test(payload: MessageCreate):
+    global in_memory_next_id
+
+    msg = MessageOut(
+        id=in_memory_next_id,
+        room_id=payload.room_id,
+        sender_id=payload.sender_id,
+        content=payload.content,
+        created_at=datetime.utcnow(),
+    )
+
+    in_memory_messages.append(msg)
+    in_memory_next_id += 1
+    return msg
 
 
-@app.get("/rooms/{room_id}", response_model=RoomOut)
-def get_room(room_id: int, db: Session = Depends(get_db)):
-    room = db.get(Room, room_id)
-    if not room:
-        raise HTTPException(status_code=404, detail="Sala não encontrada")
-    return room
 
+
+# @app.get("/rooms/{room_id}", response_model=RoomOut)
+# def get_room(room_id: int, db: Session = Depends(get_db)):
+#     room = db.get(Room, room_id)
+#     if not room:
+#         raise HTTPException(status_code=404, detail="Sala não encontrada")
+#     return room
+
+
+@app.get(
+    "/test/rooms/{room_id}/messages",
+    response_model=List[MessageOut],
+    summary="[TESTE] Listar mensagens (memória, sem Kafka/DB)",
+)
+def list_messages_test(room_id: int):
+    return [m for m in in_memory_messages if m.room_id == room_id]
 
 # ---------- MESSAGES ----------
 @app.post(
