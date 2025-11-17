@@ -60,23 +60,23 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 
 # ---------- ROOMS ----------
-# @app.post("/rooms", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
-# def create_room(payload: RoomCreate, db: Session = Depends(get_db)):
-#     existing = db.query(Room).filter(Room.name == payload.name).first()
-#     if existing:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="Sala já existe.",
-#         )
-#     room = Room(name=payload.name)
-#     db.add(room)
-#     db.commit()
-#     db.refresh(room)
-#     return room
+@app.post("/rooms", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
+def create_room(payload: RoomCreate, db: Session = Depends(get_db)):
+    existing = db.query(Room).filter(Room.name == payload.name).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sala já existe.",
+        )
+    room = Room(name=payload.name)
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    return room
 
 # ---------- linha de código para teste em API depois que o BD estiver implementado voltar ao app.post e app.get comentados ----------
 @app.post(
-    "/test/messages",
+    "/messages",
     response_model=MessageOut,
     summary="[TESTE] Enviar mensagem (memória, sem Kafka/DB)",
 )
@@ -107,7 +107,7 @@ def send_message_test(payload: MessageCreate):
 
 
 @app.get(
-    "/test/rooms/{room_id}/messages",
+    "/rooms/{room_id}/messages",
     response_model=List[MessageOut],
     summary="[TESTE] Listar mensagens (memória, sem Kafka/DB)",
 )

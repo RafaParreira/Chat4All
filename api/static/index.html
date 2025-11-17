@@ -159,7 +159,7 @@
     async function loadMessages() {
       const roomId = getRoomId();
       try {
-        const res = await fetch(`/test/rooms/${roomId}/messages`);
+        const res = await fetch(`/rooms/${roomId}/messages`);
         if (!res.ok) throw new Error('Erro ao carregar mensagens');
         const data = await res.json();
         renderMessages(data);
@@ -211,7 +211,7 @@
       };
 
       try {
-        const res = await fetch('/test/messages', {
+        const res = await fetch('/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
