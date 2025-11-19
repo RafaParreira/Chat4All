@@ -32,3 +32,19 @@ class Message(Base):
 
     room = relationship("Room", back_populates="messages")
     sender = relationship("User", back_populates="messages")
+
+
+class File(Base):
+    __tablename__ = "files"
+
+    id = Column(String(36), primary_key=True, index=True)  # uuid em string
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(100), nullable=True)
+    size_bytes = Column(Integer, nullable=False)
+    checksum = Column(String(64), nullable=True)  # ex: sha256 em hex
+    storage_key = Column(String(255), nullable=False)
+
+    uploader_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=False, index=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

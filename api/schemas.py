@@ -39,5 +39,16 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime
 
+class FileOut(BaseModel):
+    id: str
+    filename: str
+    content_type: str | None
+    size_bytes: int
+    checksum: str | None
+    room_id: int
+    uploader_id: int
+    created_at: datetime
+
     class Config:
         from_attributes = True
+

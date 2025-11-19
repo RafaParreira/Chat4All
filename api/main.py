@@ -1,13 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File as UploadFileType, Form
 from sqlalchemy.orm import Session
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from datetime import datetime
 from typing import List
-
+import hashlib
+import uuid
 
 from db import Base, engine, get_db
-from models import User, Room, Message
+from models import User, Room, Message, File as FileModel
 from schemas import (
     UserCreate,
     UserOut,
@@ -15,17 +16,19 @@ from schemas import (
     RoomOut,
     MessageCreate,
     MessageOut,
+    FileOut
 )
 from kafka_producer import send_message_to_kafka
+from storage_client import upload_file_bytes
 
-# Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Chat4All API")
 
 
 # ---- ARMAZENAMENTO EM MEMÓRIA PARA TESTE ----
-in_memory_messages: list[dict] = []
-in_memory_next_id = 1
+# in_memory_messages: list[dict] = []
+# in_memory_next_id = 1
 
 
 # ---- STATIC FRONTEND ----
@@ -75,44 +78,93 @@ def create_room(payload: RoomCreate, db: Session = Depends(get_db)):
     return room
 
 # ---------- linha de código para teste em API depois que o BD estiver implementado voltar ao app.post e app.get comentados ----------
-@app.post(
-    "/messages",
-    response_model=MessageOut,
-    summary="[TESTE] Enviar mensagem (memória, sem Kafka/DB)",
-)
-def send_message_test(payload: MessageCreate):
-    global in_memory_next_id
+# @app.post(
+#     "/messages",
+#     response_model=MessageOut,
+#     summary="[TESTE] Enviar mensagem (memória, sem Kafka/DB)",
+# )
+# def send_message_test(payload: MessageCreate):
+#     global in_memory_next_id
 
-    msg = MessageOut(
-        id=in_memory_next_id,
-        room_id=payload.room_id,
-        sender_id=payload.sender_id,
-        content=payload.content,
-        created_at=datetime.utcnow(),
+#     msg = MessageOut(
+#         id=in_memory_next_id,
+#         room_id=payload.room_id,
+#         sender_id=payload.sender_id,
+#         content=payload.content,
+#         created_at=datetime.utcnow(),
+#     )
+
+#     in_memory_messages.append(msg)
+#     in_memory_next_id += 1
+#     return msg
+
+@app.post("/v1/files/simple-upload", response_model=FileOut, status_code=status.HTTP_201_CREATED)
+async def simple_file_upload(
+    uploader_id: int = Form(...),
+    room_id: int = Form(...),
+    upload: UploadFile = UploadFileType(...),
+    db: Session = Depends(get_db),
+):
+   
+    # valida usuário e sala
+    user = db.get(User, uploader_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Uploader (usuário) não encontrado")
+
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Sala não encontrada")
+
+    data = await upload.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Arquivo vazio")
+
+    size_bytes = len(data)
+    checksum = hashlib.sha256(data).hexdigest()
+    file_id = str(uuid.uuid4())
+
+    # chave no storage (você pode mudar o layout se quiser)
+    storage_key = f"rooms/{room_id}/files/{file_id}"
+
+    # upload pro MinIO
+    upload_file_bytes(storage_key=storage_key, data=data, content_type=upload.content_type)
+
+    # registra no banco
+    file_obj = FileModel(
+        id=file_id,
+        filename=upload.filename,
+        content_type=upload.content_type,
+        size_bytes=size_bytes,
+        checksum=checksum,
+        storage_key=storage_key,
+        uploader_id=uploader_id,
+        room_id=room_id,
     )
 
-    in_memory_messages.append(msg)
-    in_memory_next_id += 1
-    return msg
+    db.add(file_obj)
+    db.commit()
+    db.refresh(file_obj)
+
+    return file_obj
 
 
 
 
-# @app.get("/rooms/{room_id}", response_model=RoomOut)
-# def get_room(room_id: int, db: Session = Depends(get_db)):
-#     room = db.get(Room, room_id)
-#     if not room:
-#         raise HTTPException(status_code=404, detail="Sala não encontrada")
-#     return room
+@app.get("/rooms/{room_id}", response_model=RoomOut)
+def get_room(room_id: int, db: Session = Depends(get_db)):
+    room = db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Sala não encontrada")
+    return room
 
 
-@app.get(
-    "/rooms/{room_id}/messages",
-    response_model=List[MessageOut],
-    summary="[TESTE] Listar mensagens (memória, sem Kafka/DB)",
-)
-def list_messages_test(room_id: int):
-    return [m for m in in_memory_messages if m.room_id == room_id]
+# @app.get(
+#     "/rooms/{room_id}/messages",
+#     response_model=List[MessageOut],
+#     summary="[TESTE] Listar mensagens (memória, sem Kafka/DB)",
+# )
+# def list_messages_test(room_id: int):
+#     return [m for m in in_memory_messages if m.room_id == room_id]
 
 # ---------- MESSAGES ----------
 @app.post(
