@@ -1,5 +1,6 @@
 from minio import Minio
 from minio.error import S3Error
+from datetime import timedelta
 import io
 
 from config import (
@@ -8,6 +9,8 @@ from config import (
     OBJECT_STORAGE_SECRET_KEY,
     OBJECT_STORAGE_BUCKET_NAME,
     OBJECT_STORAGE_SECURE_BOOL,
+    OBJECT_STORAGE_PUBLIC_ENDPOINT,
+
 )
 
 
@@ -43,3 +46,16 @@ def upload_file_bytes(storage_key: str, data: bytes, content_type: str | None = 
         length=size,
         content_type=content_type or "application/octet-stream",
     )
+
+# Gera uma URL temporária (presigned) para download do arquivo.
+def generate_presigned_download_url(storage_key: str, expires_seconds: int = 300) -> str:
+  
+    client = get_minio_client()
+    ensure_bucket_exists()
+
+    url = client.presigned_get_object(
+        OBJECT_STORAGE_BUCKET_NAME,
+        storage_key,
+        expires=timedelta(seconds=expires_seconds),
+    )
+    return url

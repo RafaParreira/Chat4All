@@ -1,6 +1,6 @@
 from datetime import datetime
+from typing import Optional, Literal
 from pydantic import BaseModel
-
 
 class UserCreate(BaseModel):
     username: str
@@ -52,3 +52,7 @@ class FileOut(BaseModel):
     class Config:
         from_attributes = True
 
+class FileDownloadURLOut(BaseModel):
+    file_id: str
+    url: str
+    expires_in: int
