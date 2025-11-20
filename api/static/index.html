@@ -101,6 +101,22 @@
       font-weight: 500;
       cursor: pointer;
     }
+    .secondary-btn {
+      background: #111827;
+      border: 1px solid #4b5563;
+      color: #e5e7eb;
+      margin-right: auto;
+    }
+    .file-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .file-name {
+      font-size: 12px;
+      opacity: 0.8;
+    }
     button:disabled {
       opacity: 0.5;
       cursor: default;
@@ -119,6 +135,9 @@
         <select id="userSelect">
           <option value="1">Usuário 1 (id=1)</option>
           <option value="2">Usuário 2 (id=2)</option>
+          <option value="3">Usuário 2 (id=2)</option>
+          <option value="4">Usuário 2 (id=2)</option>
+          <option value="5">Usuário 2 (id=2)</option>
         </select>
       </div>
       <div>
@@ -131,9 +150,17 @@
 
     <div id="chatWindow" class="chat-window"></div>
 
-    <div class="input-area">
-      <textarea id="messageInput" placeholder="Digite sua mensagem..."></textarea>
-      <button id="sendButton">Enviar</button>
+     <div class="input-area">
+      <div class="file-row">
+        <input id="fileInput" type="file" style="display:none" />
+        <button id="attachButton" class="secondary-btn" type="button">📎 Anexar arquivo</button>
+        <span id="fileName" class="file-name">Nenhum arquivo selecionado</span>
+      </div>
+
+      <textarea id="messageInput" placeholder="Digite sua mensagem (texto ou legenda do arquivo)..."></textarea>
+
+      <button id="sendButton">Enviar texto</button>
+      <button id="sendFileButton" class="secondary-btn" type="button">Enviar arquivo</button>
     </div>
   </div>
 
@@ -146,6 +173,14 @@
     const statusEl = document.getElementById('status');
 
     let isSending = false;
+
+    const fileInput = document.getElementById('fileInput');
+    const attachButton = document.getElementById('attachButton');
+    const fileNameSpan = document.getElementById('fileName');
+    const sendFileButton = document.getElementById('sendFileButton');
+
+    let selectedFile = null;
+
 
     function getCurrentUserId() {
       return parseInt(userSelect.value, 10);
@@ -185,16 +220,52 @@
         const timeStr = date ? date.toLocaleTimeString() : '';
         meta.textContent = `user ${msg.sender_id} • ${timeStr}`;
 
-        const content = document.createElement('div');
-        content.textContent = msg.content;
-
         wrapper.appendChild(meta);
-        wrapper.appendChild(content);
+
+        // suporte a mensagens "de arquivo" codificadas como:
+        // content = "FILE::<file_id>::<filename>"
+        if (msg.content && msg.content.startsWith('FILE::')) {
+          const parts = msg.content.split('::');
+          const fileId = parts[1];
+          const fileName = parts[2] || 'arquivo';
+
+          const fileInfo = document.createElement('div');
+          fileInfo.textContent = `📎 ${fileName}`;
+          wrapper.appendChild(fileInfo);
+
+          const btn = document.createElement('button');
+          btn.textContent = 'Baixar arquivo';
+          btn.type = 'button';
+          btn.className = 'secondary-btn';
+          btn.addEventListener('click', () => downloadFile(fileId));
+          wrapper.appendChild(btn);
+        } else {
+          const content = document.createElement('div');
+          content.textContent = msg.content;
+          wrapper.appendChild(content);
+        }
+
         chatWindow.appendChild(wrapper);
       });
 
       chatWindow.scrollTop = chatWindow.scrollHeight;
     }
+
+    async function downloadFile(fileId) {
+      try {
+        const res = await fetch(`/v1/files/${fileId}/download-url`);
+        if (!res.ok) {
+          alert('Erro ao obter URL de download');
+          return;
+        }
+        const data = await res.json();
+        window.open(data.url, '_blank');
+      } catch (err) {
+        console.error(err);
+        alert('Falha ao baixar arquivo.');
+      }
+    }
+
 
     async function sendMessage() {
       if (isSending) return;
@@ -228,6 +299,72 @@
       }
     }
 
+    async function sendFileMessage() {
+      if (isSending) return;
+      if (!selectedFile) {
+        alert('Selecione um arquivo primeiro.');
+        return;
+      }
+
+      isSending = true;
+      sendFileButton.disabled = true;
+
+      const roomId = getRoomId();
+      const userId = getCurrentUserId();
+
+      try {
+        // 1) upload do arquivo
+        const formData = new FormData();
+        formData.append('uploader_id', String(userId));
+        formData.append('room_id', String(roomId));
+        formData.append('upload', selectedFile);
+
+        const uploadRes = await fetch('/v1/files/simple-upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!uploadRes.ok) throw new Error('Erro no upload do arquivo');
+
+        const fileMeta = await uploadRes.json();
+        const fileId = fileMeta.id;
+        const fileName = fileMeta.filename || selectedFile.name;
+
+        // 2) criar mensagem "especial" que referencia o file_id
+        // formato: "FILE::<file_id>::<filename>"
+        const content = `FILE::${fileId}::${fileName}`;
+
+        const body = {
+          room_id: roomId,
+          sender_id: userId,
+          content: content
+        };
+
+        const msgRes = await fetch('/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!msgRes.ok) throw new Error('Erro ao enviar mensagem de arquivo');
+
+        // limpar seleção
+        selectedFile = null;
+        fileInput.value = '';
+        fileNameSpan.textContent = 'Nenhum arquivo selecionado';
+        messageInput.value = '';
+
+        await loadMessages();
+      } catch (err) {
+        console.error(err);
+        alert('Falha ao enviar arquivo.');
+      } finally {
+        isSending = false;
+        sendFileButton.disabled = false;
+      }
+    }
+
+
     sendButton.addEventListener('click', sendMessage);
     messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -236,6 +373,23 @@
       }
     });
 
+    attachButton.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (file) {
+        selectedFile = file;
+        fileNameSpan.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
+      } else {
+        selectedFile = null;
+        fileNameSpan.textContent = 'Nenhum arquivo selecionado';
+      }
+    });
+
+    sendFileButton.addEventListener('click', sendFileMessage);
+  
     userSelect.addEventListener('change', loadMessages);
     roomInput.addEventListener('change', loadMessages);
 

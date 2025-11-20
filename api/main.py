@@ -7,6 +7,8 @@ from typing import List
 import hashlib
 import uuid
 
+from sqlalchemy.orm import Session
+
 from db import Base, engine, get_db
 from models import User, Room, Message, File as FileModel
 from schemas import (
@@ -16,10 +18,11 @@ from schemas import (
     RoomOut,
     MessageCreate,
     MessageOut,
-    FileOut
+    FileOut,
+     FileDownloadURLOut,
 )
 from kafka_producer import send_message_to_kafka
-from storage_client import upload_file_bytes
+from storage_client import upload_file_bytes, generate_presigned_download_url
 
 Base.metadata.create_all(bind=engine)
 
@@ -146,6 +149,32 @@ async def simple_file_upload(
     db.refresh(file_obj)
 
     return file_obj
+
+
+@app.get(
+    "/v1/files/{file_id}/download-url",
+    response_model=FileDownloadURLOut,
+    status_code=status.HTTP_200_OK,
+)
+def get_file_download_url(
+    file_id: str,
+    db: Session = Depends(get_db),
+):
+    file_obj = db.get(FileModel, file_id)
+    if not file_obj:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+    # aqui poderia ter regra de permissão (ex: usuário precisa estar na mesma sala)
+    # por enquanto, deixamos aberto apenas para teste.
+
+    expires_in = 300  # segundos (5 minutos)
+    url = generate_presigned_download_url(file_obj.storage_key, expires_seconds=expires_in)
+
+    return FileDownloadURLOut(
+        file_id=file_id,
+        url=url,
+        expires_in=expires_in,
+    )
 
 
 
