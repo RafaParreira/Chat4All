@@ -1,20 +1,18 @@
 from minio import Minio
-from minio.error import S3Error
 from datetime import timedelta
 import io
 
 from config import (
-    OBJECT_STORAGE_ENDPOINT,
+    OBJECT_STORAGE_ENDPOINT,          # minio:9000  (interno, API/worker)
+    OBJECT_STORAGE_PUBLIC_ENDPOINT,   # localhost:9000 (externo, navegador)
     OBJECT_STORAGE_ACCESS_KEY,
     OBJECT_STORAGE_SECRET_KEY,
     OBJECT_STORAGE_BUCKET_NAME,
     OBJECT_STORAGE_SECURE_BOOL,
-    OBJECT_STORAGE_PUBLIC_ENDPOINT,
-
 )
 
-
-def get_minio_client() -> Minio:
+# 🚀 MinIO client interno (API -> MinIO dentro da rede Docker)
+def get_minio_client_internal() -> Minio:
     return Minio(
         OBJECT_STORAGE_ENDPOINT,
         access_key=OBJECT_STORAGE_ACCESS_KEY,
@@ -22,40 +20,44 @@ def get_minio_client() -> Minio:
         secure=OBJECT_STORAGE_SECURE_BOOL,
     )
 
+# 🌍 MinIO client para URL pública
+def get_minio_client_public() -> Minio:
+    return Minio(
+        OBJECT_STORAGE_PUBLIC_ENDPOINT,
+        access_key=OBJECT_STORAGE_ACCESS_KEY,
+        secret_key=OBJECT_STORAGE_SECRET_KEY,
+        secure=OBJECT_STORAGE_SECURE_BOOL,
+    )
 
 def ensure_bucket_exists():
-    client = get_minio_client()
-    found = client.bucket_exists(OBJECT_STORAGE_BUCKET_NAME)
-    if not found:
+    client = get_minio_client_internal()
+    if not client.bucket_exists(OBJECT_STORAGE_BUCKET_NAME):
         client.make_bucket(OBJECT_STORAGE_BUCKET_NAME)
 
-
-# Faz upload simples (não multipart) de um arquivo em memória.
+# ---------------------------
+#           UPLOAD
+# ---------------------------
 def upload_file_bytes(storage_key: str, data: bytes, content_type: str | None = None) -> None:
-   
-    client = get_minio_client()
+    client = get_minio_client_internal()
     ensure_bucket_exists()
-
-    size = len(data)
-    data_stream = io.BytesIO(data)  # <-- transforma bytes em um "arquivo" em memória
 
     client.put_object(
         OBJECT_STORAGE_BUCKET_NAME,
         storage_key,
-        data_stream,
-        length=size,
+        io.BytesIO(data),
+        length=len(data),
         content_type=content_type or "application/octet-stream",
     )
 
-# Gera uma URL temporária (presigned) para download do arquivo.
+# ---------------------------
+#         DOWNLOAD URL
+# ---------------------------
 def generate_presigned_download_url(storage_key: str, expires_seconds: int = 300) -> str:
-  
-    client = get_minio_client()
-    ensure_bucket_exists()
+    # Para gerar o link público, usamos o endpoint interno
+    client = get_minio_client_internal()
 
-    url = client.presigned_get_object(
+    return client.presigned_get_object(
         OBJECT_STORAGE_BUCKET_NAME,
         storage_key,
         expires=timedelta(seconds=expires_seconds),
     )
-    return url

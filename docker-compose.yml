@@ -30,6 +30,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 
   api:
     build: ./api
@@ -46,9 +47,10 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OBJECT_STORAGE_ENDPOINT: "minio:9000"
+      OBJECT_STORAGE_PUBLIC_ENDPOINT: "localhost:9000"
       KAFKA_CHAT_TOPIC: chat-messages
 
-      OBJECT_STORAGE_ENDPOINT: "minio:9000"
       OBJECT_STORAGE_ACCESS_KEY: "chat4all"
       OBJECT_STORAGE_SECRET_KEY: "chat4all123"
       OBJECT_STORAGE_BUCKET_NAME: "chat4all-files"
