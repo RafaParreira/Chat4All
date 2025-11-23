@@ -141,10 +141,10 @@ Uma interface gráfica está disponível para interação com o sistema:
 
 # ▶️ **Instruções de Execução**
 
-1. Inicie o servidor backend (FastAPI).
-2. Acesse a interface web pelo navegador:
+1. Inicie o servidor backend (FastAPI): 'docker compose up --build'.
+3. Acesse a interface web pelo navegador:
    👉 **[http://localhost:8000/static/index.html](http://localhost:8000/static/index.html)**
-3. Utilize a interface para:
+4. Utilize a interface para:
 
    * Entrar em salas
    * Criar mensagens
