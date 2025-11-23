@@ -1,11 +1,9 @@
-
 # 🚀 **Chat4All – API & Interface de Chat**
 
 Um sistema completo para gerenciamento de **usuários**, **salas**, **mensagens** e **arquivos**, com interface web integrada.
-Toda a API está documentada automaticamente via **Swagger**, disponível apenas em execucao e acessível em:
+Toda a API está documentada automaticamente via **Swagger**, disponível apenas em execução e acessível em:
 
 🔗 **[http://localhost:8000/docs#/](http://localhost:8000/docs#/)**
-
 
 ---
 
@@ -113,11 +111,51 @@ Campos obrigatórios:
 
 `GET /v1/files/{file_id}/download`
 
-Parâmetros:
-
 | Parâmetro | Tipo   | Descrição     |
 | --------- | ------ | ------------- |
 | `file_id` | string | ID do arquivo |
+
+---
+
+# 📱 **Connector Mock – WhatsApp e Instagram**
+
+Estes endpoints simulam a chegada de mensagens externas via **WhatsApp** e **Instagram**, permitindo testes de integração sem depender das APIs oficiais.
+
+---
+
+## 💬 WhatsApp – Mock Inbound
+
+### 📥 Receber Mensagem
+
+`POST /mock/whatsapp/inbound`
+
+Exemplo de payload:
+
+```json
+{
+  "sender": "5511999999999",
+  "message": "Olá, isso é um teste via WhatsApp!",
+  "room_id": 1
+}
+```
+
+---
+
+## 📸 Instagram – Mock Inbound
+
+### 📥 Receber Mensagem
+
+`POST /mock/instagram/inbound`
+
+Exemplo de payload:
+
+```json
+{
+  "sender": "usuario_ig",
+  "message": "Mensagem enviada pelo Instagram!",
+  "room_id": 1
+}
+```
 
 ---
 
@@ -127,24 +165,28 @@ Uma interface gráfica está disponível para interação com o sistema:
 
 🔗 **[http://localhost:8000/static/index.html](http://localhost:8000/static/index.html)**
 
-### Funções disponíveis na interface:
+### Funções disponíveis:
 
 * Visualizar **usuário atual**
 * Alterar **sala**
-* Ler todas as **mensagens** do chat
+* Ler todas as **mensagens**
 * Enviar textos
 * **Anexar arquivos**
 * Enviar arquivo anexado
-* Baixar arquivos recebidos (botão: **"Baixar arquivo"**)
+* Baixar arquivos recebidos (**"Baixar arquivo"**)
 
 ---
 
 # ▶️ **Instruções de Execução**
 
-1. Inicie o servidor backend (FastAPI): 'docker compose up --build'.
-3. Acesse a interface web pelo navegador:
+1. Inicie o servidor backend (FastAPI):
+
+   ```
+   docker compose up --build
+   ```
+2. Acesse a interface web:
    👉 **[http://localhost:8000/static/index.html](http://localhost:8000/static/index.html)**
-4. Utilize a interface para:
+3. Utilize a interface para:
 
    * Entrar em salas
    * Criar mensagens
@@ -158,5 +200,6 @@ Uma interface gráfica está disponível para interação com o sistema:
 * A interface apresenta um uso **intuitivo**, permitindo que o usuário navegue e interaja com facilidade.
 * A aplicação possui **persistência de dados**: enquanto o servidor estiver em execução, mesmo que a aba do chat seja fechada, ao retorná-la é possível visualizar todas as mensagens que haviam sido enviadas e recebidas anteriormente.
 
+---
 
 
