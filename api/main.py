@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File as UploadFileType, Form
 from sqlalchemy.orm import Session
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
+from starlette.background import BackgroundTask
 from datetime import datetime
 from typing import List
 import hashlib
@@ -22,7 +23,7 @@ from schemas import (
      FileDownloadURLOut,
 )
 from kafka_producer import send_message_to_kafka
-from storage_client import upload_file_bytes, generate_presigned_download_url
+from storage_client import upload_file_bytes, get_file_stream
 
 Base.metadata.create_all(bind=engine)
 
@@ -151,31 +152,61 @@ async def simple_file_upload(
     return file_obj
 
 
-@app.get(
-    "/v1/files/{file_id}/download-url",
-    response_model=FileDownloadURLOut,
-    status_code=status.HTTP_200_OK,
-)
-def get_file_download_url(
-    file_id: str,
-    db: Session = Depends(get_db),
-):
+# @app.get(
+#     "/v1/files/{file_id}/download-url",
+#     response_model=FileDownloadURLOut,
+#     status_code=status.HTTP_200_OK,
+# )
+# def get_file_download_url(
+#     file_id: str,
+#     db: Session = Depends(get_db),
+# ):
+#     file_obj = db.get(FileModel, file_id)
+#     if not file_obj:
+#         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+#     # aqui poderia ter regra de permissão (ex: usuário precisa estar na mesma sala)
+#     # por enquanto, deixamos aberto apenas para teste.
+
+#     expires_in = 300  # segundos (5 minutos)
+#     url = generate_presigned_download_url(file_obj.storage_key, expires_seconds=expires_in)
+
+#     return FileDownloadURLOut(
+#         file_id=file_id,
+#         url=url,
+#         expires_in=expires_in,
+#     )
+
+
+@app.get("/v1/files/{file_id}/download")
+def download_file_v1(file_id: str, db: Session = Depends(get_db)):
+    """
+    Faz o download do arquivo passando pela API.
+    O navegador acessa localhost:8000 e a API busca o arquivo no MinIO.
+    """
     file_obj = db.get(FileModel, file_id)
     if not file_obj:
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
 
-    # aqui poderia ter regra de permissão (ex: usuário precisa estar na mesma sala)
-    # por enquanto, deixamos aberto apenas para teste.
+    # stream do MinIO
+    obj = get_file_stream(file_obj.storage_key)
 
-    expires_in = 300  # segundos (5 minutos)
-    url = generate_presigned_download_url(file_obj.storage_key, expires_seconds=expires_in)
+    # gera um iterador de chunks
+    def iter_stream():
+        for data in obj.stream(32 * 1024):
+            yield data
 
-    return FileDownloadURLOut(
-        file_id=file_id,
-        url=url,
-        expires_in=expires_in,
+    # garante que o stream será fechado depois
+    background = BackgroundTask(obj.close)
+
+    return StreamingResponse(
+        iter_stream(),
+        media_type=file_obj.content_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{file_obj.filename}"'
+        },
+        background=background,
     )
-
 
 
 

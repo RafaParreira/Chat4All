@@ -135,9 +135,9 @@
         <select id="userSelect">
           <option value="1">Usuário 1 (id=1)</option>
           <option value="2">Usuário 2 (id=2)</option>
-          <option value="3">Usuário 2 (id=2)</option>
-          <option value="4">Usuário 2 (id=2)</option>
-          <option value="5">Usuário 2 (id=2)</option>
+          <option value="3">Usuário 3 (id=3)</option>
+          <option value="4">Usuário 4 (id=4)</option>
+          <option value="5">Usuário 5 (id=5)</option>
         </select>
       </div>
       <div>
@@ -159,8 +159,8 @@
 
       <textarea id="messageInput" placeholder="Digite sua mensagem (texto ou legenda do arquivo)..."></textarea>
 
-      <button id="sendButton">Enviar texto</button>
-      <button id="sendFileButton" class="secondary-btn" type="button">Enviar arquivo</button>
+      <button id="sendButton" type="button">Enviar texto</button>
+      <button id="sendFileButton" type="button">Enviar arquivo</button>
     </div>
   </div>
 
@@ -194,7 +194,9 @@
     async function loadMessages() {
       const roomId = getRoomId();
       try {
-        const res = await fetch(`/rooms/${roomId}/messages`);
+         const res = await fetch(`/rooms/${roomId}/messages`, {
+          cache: 'no-store',
+          });
         if (!res.ok) throw new Error('Erro ao carregar mensagens');
         const data = await res.json();
         renderMessages(data);
@@ -252,19 +254,31 @@
     }
 
     async function downloadFile(fileId) {
-      try {
-        const res = await fetch(`/v1/files/${fileId}/download-url`);
-        if (!res.ok) {
-          alert('Erro ao obter URL de download');
-          return;
-        }
-        const data = await res.json();
-        window.open(data.url, '_blank');
-      } catch (err) {
-        console.error(err);
-        alert('Falha ao baixar arquivo.');
-      }
+      const url = `/v1/files/${fileId}/download`;
+      // Abre em nova aba / janela para não recarregar o chat
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
+
+    // async function downloadFile(fileId) {
+    //   try {
+    //     const res = await fetch(`/v1/files/${fileId}/download-url`);
+    //     if (!res.ok) {
+    //       alert('Erro ao obter URL de download');
+    //       return;
+    //     }
+    //     const data = await res.json();
+    //     window.open(data.url, '_blank');
+    //   } catch (err) {
+    //     console.error(err);
+    //     alert('Falha ao baixar arquivo.');
+    //   }
+    // }
 
 
     async function sendMessage() {
