@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+confluent-kafka
+sqlalchemy
+psycopg2-binary
+python-multipart
+minio
