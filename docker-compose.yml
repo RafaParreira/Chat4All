@@ -86,6 +86,36 @@ services:
     # opcional: reiniciar sempre que cair
     restart: unless-stopped
 
+  connector_whatsapp_mock:
+    build:
+      context: .
+      dockerfile: connector_whatsapp_mock/Dockerfile
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      WHATSAPP_OUTBOUND_TOPIC: "whatsapp_outbound"
+      WHATSAPP_INBOUND_TOPIC: "whatsapp_inbound"
+    ports:
+      - "8002:8002"
+
+  connector_instagram_mock:
+    build:
+      context: .
+      dockerfile: connector_instagram_mock/Dockerfile
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      INSTAGRAM_OUTBOUND_TOPIC: "instagram_outbound"
+      INSTAGRAM_INBOUND_TOPIC: "instagram_inbound"
+    ports:
+      - "8003:8003"
+
+
+
+
+
 volumes:
   pgdata:
   minio_data:
