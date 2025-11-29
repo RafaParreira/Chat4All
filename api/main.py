@@ -1,12 +1,22 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File as UploadFileType, Form
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File as UploadFileType, Form, Request
 from sqlalchemy.orm import Session
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse, Response
 from starlette.background import BackgroundTask
 from datetime import datetime
 from typing import List
+from prometheus_client import (
+    Counter,
+    Histogram,
+    Gauge,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+)
 import hashlib
 import uuid
+import time
+import threading
+import psutil
 
 from sqlalchemy.orm import Session
 
@@ -28,6 +38,69 @@ from storage_client import upload_file_bytes, get_file_stream
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Chat4All API")
+
+
+# ============================
+#   Métricas Prometheus API
+# ============================
+API_REQUEST_LATENCY = Histogram(
+    "api_request_latency_seconds",
+    "Latência das requisições da API em segundos",
+    ["method", "path"],
+)
+
+API_ERRORS_TOTAL = Counter(
+    "api_errors_total",
+    "Total de respostas 5xx retornadas pela API",
+)
+
+API_CPU_PERCENT = Gauge(
+    "api_cpu_percent",
+    "Uso de CPU da API em porcentagem",
+)
+
+API_MEMORY_PERCENT = Gauge(
+    "api_memory_percent",
+    "Uso de memória da API em porcentagem",
+)
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start = time.time()
+    try:
+        response = await call_next(request)
+    except Exception:
+        # conta erros 5xx
+        API_ERRORS_TOTAL.inc()
+        raise
+    finally:
+        elapsed = time.time() - start
+        # usa apenas o path bruto (sem querystring)
+        API_REQUEST_LATENCY.labels(
+            method=request.method,
+            path=request.url.path,
+        ).observe(elapsed)
+    return response
+
+
+def _collect_resource_usage():
+    """
+    Coleta periódica de CPU e memória da API.
+    Roda em uma thread em background.
+    """
+    while True:
+        # interval=None -> usa a média desde a última chamada,
+        # para não bloquear a thread por 1s
+        API_CPU_PERCENT.set(psutil.cpu_percent(interval=None))
+        API_MEMORY_PERCENT.set(psutil.virtual_memory().percent)
+        time.sleep(5)
+
+
+@app.on_event("startup")
+def start_metrics_background():
+    # não atrapalha o startup da API
+    t = threading.Thread(target=_collect_resource_usage, daemon=True)
+    t.start()
 
 
 # ---- ARMAZENAMENTO EM MEMÓRIA PARA TESTE ----
@@ -262,3 +335,11 @@ def list_messages(room_id: int, db: Session = Depends(get_db), limit: int = 50):
     )
     # retorna do mais recente para o mais antigo (você pode inverter se preferir)
     return list(reversed(messages))
+
+@app.get("/metrics")
+def metrics():
+    """
+    Endpoint padrão Prometheus para coletar métricas da API.
+    """
+    data = generate_latest()
+    return Response(data, media_type=CONTENT_TYPE_LATEST)
