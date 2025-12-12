@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chat4All - Teste</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #111827;
+      color: #e5e7eb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      background: #1f2937;
+      border-radius: 12px;
+      padding: 16px;
+      max-width: 800px;
+      width: 100%;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+    .header select,
+    .header input {
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 8px;
+      border: 1px solid #374151;
+      padding: 6px 8px;
+    }
+    .chat-window {
+      border-radius: 8px;
+      border: 1px solid #374151;
+      background: #020617;
+      padding: 8px;
+      height: 320px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .message {
+      max-width: 70%;
+      padding: 6px 8px;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.3;
+      display: inline-block;
+      word-wrap: break-word;
+    }
+    .from-me {
+      background: #4b91ff;
+      color: #f9fafb;
+      align-self: flex-end;
+    }
+    .from-other {
+      background: #374151;
+      color: #e5e7eb;
+      align-self: flex-start;
+    }
+    .meta {
+      font-size: 11px;
+      opacity: 0.7;
+      margin-bottom: 2px;
+    }
+    .input-area {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    textarea {
+      background: #020617;
+      color: #e5e7eb;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 8px;
+      resize: vertical;
+      min-height: 60px;
+    }
+    button {
+      align-self: flex-end;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: none;
+      background: #4b91ff;
+      color: #f9fafb;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .secondary-btn {
+      background: #111827;
+      border: 1px solid #4b5563;
+      color: #e5e7eb;
+      margin-right: auto;
+    }
+    .file-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .file-name {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .status {
+      font-size: 12px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <label for="userSelect">Usuário atual:</label>
+        <select id="userSelect">
+          <option value="1">Usuário 1 (id=1)</option>
+          <option value="2">Usuário 2 (id=2)</option>
+          <option value="3">Usuário 3 (id=3)</option>
+          <option value="4">Usuário 4 (id=4)</option>
+          <option value="5">Usuário 5 (id=5)</option>
+        </select>
+      </div>
+      <div>
+        <label for="roomInput">Sala (room_id):</label>
+        <input id="roomInput" type="number" value="10" min="1" />
+      </div>
+    </div>
+
+    <div id="status" class="status">Carregando mensagens…</div>
+
+    <div id="chatWindow" class="chat-window"></div>
+
+     <div class="input-area">
+      <div class="file-row">
+        <input id="fileInput" type="file" style="display:none" />
+        <button id="attachButton" class="secondary-btn" type="button">📎 Anexar arquivo</button>
+        <span id="fileName" class="file-name">Nenhum arquivo selecionado</span>
+      </div>
+
+      <textarea id="messageInput" placeholder="Digite sua mensagem (texto ou legenda do arquivo)..."></textarea>
+
+      <button id="sendButton" type="button">Enviar texto</button>
+      <button id="sendFileButton" type="button">Enviar arquivo</button>
+    </div>
+  </div>
+
+  <script>
+    const userSelect = document.getElementById('userSelect');
+    const roomInput = document.getElementById('roomInput');
+    const chatWindow = document.getElementById('chatWindow');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
+    const statusEl = document.getElementById('status');
+
+    let isSending = false;
+
+    const fileInput = document.getElementById('fileInput');
+    const attachButton = document.getElementById('attachButton');
+    const fileNameSpan = document.getElementById('fileName');
+    const sendFileButton = document.getElementById('sendFileButton');
+
+    let selectedFile = null;
+
+
+    function getCurrentUserId() {
+      return parseInt(userSelect.value, 10);
+    }
+
+    function getRoomId() {
+      const val = parseInt(roomInput.value, 10);
+      return isNaN(val) ? 1 : val;
+    }
+
+    async function loadMessages() {
+      const roomId = getRoomId();
+      try {
+         const res = await fetch(`/rooms/${roomId}/messages`, {
+          cache: 'no-store',
+          });
+        if (!res.ok) throw new Error('Erro ao carregar mensagens');
+        const data = await res.json();
+        renderMessages(data);
+        statusEl.textContent = `Sala ${roomId} — ${data.length} mensagem(ns).`;
+      } catch (err) {
+        statusEl.textContent = 'Erro ao carregar mensagens.';
+        console.error(err);
+      }
+    }
+
+    function renderMessages(messages) {
+      chatWindow.innerHTML = '';
+      const currentUser = getCurrentUserId();
+
+      messages.forEach(msg => {
+        const wrapper = document.createElement('div');
+        const isMe = msg.sender_id === currentUser;
+        wrapper.className = `message ${isMe ? 'from-me' : 'from-other'}`;
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const date = msg.created_at ? new Date(msg.created_at) : null;
+        const timeStr = date ? date.toLocaleTimeString() : '';
+        meta.textContent = `user ${msg.sender_id} • ${timeStr}`;
+
+        wrapper.appendChild(meta);
+
+        // suporte a mensagens "de arquivo" codificadas como:
+        // content = "FILE::<file_id>::<filename>"
+        if (msg.content && msg.content.startsWith('FILE::')) {
+          const parts = msg.content.split('::');
+          const fileId = parts[1];
+          const fileName = parts[2] || 'arquivo';
+
+          const fileInfo = document.createElement('div');
+          fileInfo.textContent = `📎 ${fileName}`;
+          wrapper.appendChild(fileInfo);
+
+          const btn = document.createElement('button');
+          btn.textContent = 'Baixar arquivo';
+          btn.type = 'button';
+          btn.className = 'secondary-btn';
+          btn.addEventListener('click', () => downloadFile(fileId));
+          wrapper.appendChild(btn);
+        } else {
+          const content = document.createElement('div');
+          content.textContent = msg.content;
+          wrapper.appendChild(content);
+        }
+
+        chatWindow.appendChild(wrapper);
+      });
+
+      chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
+    async function downloadFile(fileId) {
+      const url = `/v1/files/${fileId}/download`;
+      // Abre em nova aba / janela para não recarregar o chat
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // async function downloadFile(fileId) {
+    //   try {
+    //     const res = await fetch(`/v1/files/${fileId}/download-url`);
+    //     if (!res.ok) {
+    //       alert('Erro ao obter URL de download');
+    //       return;
+    //     }
+    //     const data = await res.json();
+    //     window.open(data.url, '_blank');
+    //   } catch (err) {
+    //     console.error(err);
+    //     alert('Falha ao baixar arquivo.');
+    //   }
+    // }
+
+
+    async function sendMessage() {
+      if (isSending) return;
+      const content = messageInput.value.trim();
+      if (!content) return;
+
+      isSending = true;
+      sendButton.disabled = true;
+
+      const body = {
+        room_id: getRoomId(),
+        sender_id: getCurrentUserId(),
+        content: content
+      };
+
+      try {
+        const res = await fetch('/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error('Erro ao enviar mensagem');
+        messageInput.value = '';
+        await loadMessages();
+      } catch (err) {
+        alert('Falha ao enviar mensagem.');
+        console.error(err);
+      } finally {
+        isSending = false;
+        sendButton.disabled = false;
+      }
+    }
+
+    async function sendFileMessage() {
+      if (isSending) return;
+      if (!selectedFile) {
+        alert('Selecione um arquivo primeiro.');
+        return;
+      }
+
+      isSending = true;
+      sendFileButton.disabled = true;
+
+      const roomId = getRoomId();
+      const userId = getCurrentUserId();
+
+      try {
+        // 1) upload do arquivo
+        const formData = new FormData();
+        formData.append('uploader_id', String(userId));
+        formData.append('room_id', String(roomId));
+        formData.append('upload', selectedFile);
+
+        const uploadRes = await fetch('/v1/files/simple-upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!uploadRes.ok) throw new Error('Erro no upload do arquivo');
+
+        const fileMeta = await uploadRes.json();
+        const fileId = fileMeta.id;
+        const fileName = fileMeta.filename || selectedFile.name;
+
+        // 2) criar mensagem "especial" que referencia o file_id
+        // formato: "FILE::<file_id>::<filename>"
+        const content = `FILE::${fileId}::${fileName}`;
+
+        const body = {
+          room_id: roomId,
+          sender_id: userId,
+          content: content
+        };
+
+        const msgRes = await fetch('/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!msgRes.ok) throw new Error('Erro ao enviar mensagem de arquivo');
+
+        // limpar seleção
+        selectedFile = null;
+        fileInput.value = '';
+        fileNameSpan.textContent = 'Nenhum arquivo selecionado';
+        messageInput.value = '';
+
+        await loadMessages();
+      } catch (err) {
+        console.error(err);
+        alert('Falha ao enviar arquivo.');
+      } finally {
+        isSending = false;
+        sendFileButton.disabled = false;
+      }
+    }
+
+
+    sendButton.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    attachButton.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (file) {
+        selectedFile = file;
+        fileNameSpan.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
+      } else {
+        selectedFile = null;
+        fileNameSpan.textContent = 'Nenhum arquivo selecionado';
+      }
+    });
+
+    sendFileButton.addEventListener('click', sendFileMessage);
+  
+    userSelect.addEventListener('change', loadMessages);
+    roomInput.addEventListener('change', loadMessages);
+
+    // carrega mensagens inicialmente e faz polling
+    loadMessages();
+    setInterval(loadMessages, 2000);
+  </script>
+</body>
+</html>
